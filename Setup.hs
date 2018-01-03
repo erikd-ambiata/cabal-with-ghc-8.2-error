@@ -1,19 +1,37 @@
 #!/usr/bin/env runhaskell
 
+{-# LANGUAGE CPP #-}
+
 import           Data.Char (isDigit)
 import           Data.List (intercalate)
 import           Data.Monoid ((<>))
-import           Data.Version (showVersion)
 
 import           Distribution.InstalledPackageInfo
 import           Distribution.PackageDescription
-import           Distribution.Simple
+import           Distribution.Simple (buildHook, defaultMainWithHooks, pkgName, pkgVersion, preConf, replHook, sDistHook, simpleUserHooks, testHook)
 import           Distribution.Simple.Setup (BuildFlags(..), ReplFlags(..), TestFlags(..), fromFlag)
 import           Distribution.Simple.LocalBuildInfo
 import           Distribution.Simple.PackageIndex
 import           Distribution.Simple.BuildPaths (autogenModulesDir)
 import           Distribution.Simple.Utils (createDirectoryIfMissingVerbose, rewriteFile, rawSystemStdout)
 import           Distribution.Verbosity
+
+#if __GLASGOW_HASKELL__ <= 710
+-- GHC 7.10 and earlier do not support the MIN_VERSION_Cabal macro.
+#define MIN_VERSION_Cabal(a,b,c) 0
+#endif
+
+#if MIN_VERSION_Cabal(2,0,0)
+import           Distribution.Types.PackageName (PackageName, unPackageName)
+import           Distribution.Version (Version, versionNumbers)
+
+showVersion :: Version -> String
+showVersion = intercalate "." . fmap show . versionNumbers
+#else
+import           Distribution.Simple (PackageName, unPackageName)
+import           Data.Version (showVersion)
+#endif
+
 
 main :: IO ()
 main =
@@ -42,7 +60,7 @@ main =
 genBuildInfo :: Verbosity -> PackageDescription -> IO ()
 genBuildInfo verbosity pkg = do
   createDirectoryIfMissingVerbose verbosity True "gen"
-  let (PackageName pname) = pkgName . package $ pkg
+  let pname = unPackageName . pkgName . package $ pkg
       version = pkgVersion . package $ pkg
       name = "BuildInfo_" ++ (map (\c -> if c == '-' then '_' else c) pname)
       targetHs = "gen/" ++ name ++ ".hs"
@@ -65,13 +83,13 @@ genBuildInfo verbosity pkg = do
 genDependencyInfo :: Verbosity -> PackageDescription -> LocalBuildInfo -> IO ()
 genDependencyInfo verbosity pkg info = do
   let
-    (PackageName pname) = pkgName . package $ pkg
+    pname = unPackageName . pkgName . package $ pkg
     name = "DependencyInfo_" ++ (map (\c -> if c == '-' then '_' else c) pname)
     targetHs = autogenModulesDir info ++ "/" ++ name ++ ".hs"
     render p =
       let
         n = unPackageName $ pkgName p
-        v = intercalate "." . fmap show . versionBranch $ pkgVersion p
+        v = showVersion $ pkgVersion p
       in
        n ++ "-" ++ v
     deps = fmap (render . sourcePackageId) . allPackages $ installedPkgs info

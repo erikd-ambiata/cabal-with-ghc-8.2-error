@@ -12,7 +12,6 @@ import           Distribution.Simple (buildHook, defaultMainWithHooks, pkgName, 
 import           Distribution.Simple.Setup (BuildFlags(..), ReplFlags(..), TestFlags(..), fromFlag)
 import           Distribution.Simple.LocalBuildInfo
 import           Distribution.Simple.PackageIndex
-import           Distribution.Simple.BuildPaths (autogenModulesDir)
 import           Distribution.Simple.Utils (createDirectoryIfMissingVerbose, rewriteFile, rawSystemStdout)
 import           Distribution.Verbosity
 
@@ -23,13 +22,22 @@ import           Distribution.Verbosity
 
 #if MIN_VERSION_Cabal(2,0,0)
 import           Distribution.Types.PackageName (PackageName, unPackageName)
+import           Distribution.Simple.BuildPaths (autogenPackageModulesDir)
 import           Distribution.Version (Version, versionNumbers)
 
 showVersion :: Version -> String
 showVersion = intercalate "." . fmap show . versionNumbers
+
+autogenModulesDirCompat :: LocalBuildInfo -> String
+autogenModulesDirCompat = autogenPackageModulesDir
+
 #else
 import           Distribution.Simple (PackageName, unPackageName)
+import           Distribution.Simple.BuildPaths (autogenModulesDir)
 import           Data.Version (showVersion)
+
+autogenModulesDirCompat :: LocalBuildInfo -> String
+autogenModulesDirCompat = autogenModulesDir
 #endif
 
 
@@ -85,7 +93,7 @@ genDependencyInfo verbosity pkg info = do
   let
     pname = unPackageName . pkgName . package $ pkg
     name = "DependencyInfo_" ++ (map (\c -> if c == '-' then '_' else c) pname)
-    targetHs = autogenModulesDir info ++ "/" ++ name ++ ".hs"
+    targetHs = autogenModulesDirCompat info ++ "/" ++ name ++ ".hs"
     render p =
       let
         n = unPackageName $ pkgName p
@@ -95,7 +103,7 @@ genDependencyInfo verbosity pkg info = do
     deps = fmap (render . sourcePackageId) . allPackages $ installedPkgs info
     strs = flip fmap deps $ \d -> "\"" ++ d ++ "\""
 
-  createDirectoryIfMissingVerbose verbosity True (autogenModulesDir info)
+  createDirectoryIfMissingVerbose verbosity True (autogenModulesDirCompat info)
 
   rewriteFile targetHs $ unlines [
       "module " ++ name ++ " where"
